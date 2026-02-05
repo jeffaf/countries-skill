@@ -18,6 +18,8 @@ ln -s ~/clawd/skills/countries/countries ~/bin/countries
 - bash
 - curl
 - jq
+
+> **Windows users:** Requires WSL, Git Bash, or Cygwin.
 - bc
 
 
