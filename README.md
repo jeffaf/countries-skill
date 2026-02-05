@@ -14,10 +14,12 @@ ln -s ~/clawd/skills/countries/countries ~/bin/countries
 
 ## Requirements
 
+
 - bash
 - curl
 - jq
 - bc
+
 
 ## Usage
 
