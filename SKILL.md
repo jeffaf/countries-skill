@@ -89,6 +89,8 @@ Valid regions: `africa`, `americas`, `asia`, `europe`, `oceania`
 
 ## Agent Implementation Notes
 
+**Platform note:** If your human is on Windows, they'll need WSL, Git Bash, or Cygwin to run this skill.
+
 **Script location:** `{skill_folder}/countries` (wrapper to `scripts/countries`)
 
 **When user asks about countries:**
