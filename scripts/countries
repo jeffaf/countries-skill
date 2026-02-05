@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# countries - REST Countries API CLI for country lookups
+# Usage: countries <command> [args]
+
+set -euo pipefail
+
+API="https://restcountries.com/v3.1"
+
+usage() {
+    cat <<EOF
+Usage: countries <command> [args]
+
+Commands:
+  search <name>     Search countries by name
+  info <code>       Get country details by alpha-2/alpha-3 code
+  region <region>   List countries by region (africa/americas/asia/europe/oceania)
+  capital <city>    Search by capital city name
+  all               List all countries (abbreviated)
+
+Examples:
+  countries search "united states"
+  countries info US
+  countries region europe
+  countries capital tokyo
+EOF
+    exit 1
+}
+
+fetch() {
+    curl -sf "$1" || { echo "API error" >&2; exit 1; }
+}
+
+# Format population with M/K suffix
+format_pop() {
+    local pop="$1"
+    if [[ "$pop" -ge 1000000000 ]]; then
+        echo "$(echo "scale=1; $pop/1000000000" | bc)B"
+    elif [[ "$pop" -ge 1000000 ]]; then
+        echo "$(echo "scale=1; $pop/1000000" | bc)M"
+    elif [[ "$pop" -ge 1000 ]]; then
+        echo "$(echo "scale=0; $pop/1000" | bc)K"
+    else
+        echo "$pop"
+    fi
+}
+
+format_country_list() {
+    jq -r '
+        .[] | 
+        "[\(.cca2)] \(.name.common) — \(.capital[0] // "N/A"), \(.region), Pop: \(.population), \(.flag)"
+    ' | while IFS= read -r line; do
+        # Format population with suffix
+        pop=$(echo "$line" | grep -oE 'Pop: [0-9]+' | grep -oE '[0-9]+')
+        if [[ -n "$pop" ]]; then
+            formatted=$(format_pop "$pop")
+            echo "$line" | sed "s/Pop: $pop/Pop: $formatted/"
+        else
+            echo "$line"
+        fi
+    done
+}
+
+format_country_full() {
+    jq -r '
+        .[0] |
+        "🌍 \(.name.common)\n" +
+        (if .name.official and .name.official != .name.common then "   Official: \(.name.official)\n" else "" end) +
+        "   Code: \(.cca2) / \(.cca3) / \(.ccn3 // "N/A")\n" +
+        "   Capital: \(.capital | if . then join(", ") else "N/A" end)\n" +
+        "   Region: \(.region) — \(.subregion // "N/A")\n" +
+        "   Population: \(.population)\n" +
+        "   Area: \(.area // "N/A") km²\n" +
+        "   Languages: \(if .languages then [.languages | to_entries[] | .value] | join(", ") else "N/A" end)\n" +
+        "   Currencies: \(if .currencies then [.currencies | to_entries[] | "\(.value.name) (\(.key))"] | join(", ") else "N/A" end)\n" +
+        "   Timezones: \(.timezones | join(", "))\n" +
+        "   Borders: \(if .borders and (.borders | length) > 0 then .borders | join(", ") else "None (island/isolated)" end)\n" +
+        "   Driving: \(.car.side // "N/A") side\n" +
+        "   Flag: \(.flag)\n" +
+        (if .maps.googleMaps then "\n🗺️ Map: \(.maps.googleMaps)\n" else "" end)
+    ' | while IFS= read -r line; do
+        # Format population in full output
+        if [[ "$line" =~ Population:\ ([0-9]+) ]]; then
+            pop="${BASH_REMATCH[1]}"
+            formatted=$(format_pop "$pop")
+            echo "$line" | sed "s/Population: $pop/Population: $formatted/"
+        else
+            echo "$line"
+        fi
+    done
+}
+
+cmd_search() {
+    [[ -z "${1:-}" ]] && { echo "Usage: countries search <name>" >&2; exit 1; }
+    fetch "$API/name/$(printf '%s' "$1" | jq -sRr @uri)?fields=name,cca2,capital,region,population,flag" | format_country_list
+}
+
+cmd_info() {
+    [[ -z "${1:-}" ]] && { echo "Usage: countries info <code>" >&2; exit 1; }
+    fetch "$API/alpha/$1" | format_country_full
+}
+
+cmd_region() {
+    [[ -z "${1:-}" ]] && { echo "Usage: countries region <region>" >&2; exit 1; }
+    local region="${1,,}" # lowercase
+    fetch "$API/region/$region?fields=name,cca2,capital,region,population,flag" | format_country_list
+}
+
+cmd_capital() {
+    [[ -z "${1:-}" ]] && { echo "Usage: countries capital <city>" >&2; exit 1; }
+    fetch "$API/capital/$(printf '%s' "$1" | jq -sRr @uri)?fields=name,cca2,capital,region,population,flag" | format_country_list
+}
+
+cmd_all() {
+    fetch "$API/all?fields=name,cca2,capital,region,population,flag" | format_country_list | sort
+}
+
+[[ $# -lt 1 ]] && usage
+
+case "$1" in
+    search)   shift; cmd_search "$@" ;;
+    info)     shift; cmd_info "$@" ;;
+    region)   shift; cmd_region "$@" ;;
+    capital)  shift; cmd_capital "$@" ;;
+    all)      cmd_all ;;
+    -h|--help|help) usage ;;
+    *) echo "Unknown command: $1" >&2; usage ;;
+esac
